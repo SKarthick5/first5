@@ -1,0 +1,455 @@
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+from launch_ros.actions import Node
+
+from launch.substitutions import Command
+from launch_ros.parameter_descriptions import ParameterValue
+
+from ament_index_python.packages import get_package_share_directory
+
+import os
+
+
+def generate_launch_description():
+
+    # ================= PACKAGE PATH =================
+
+    pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
+
+    pkg_my_robot = get_package_share_directory('my_robot_description')
+
+    xacro_file = os.path.join(
+        pkg_my_robot,
+        'urdf',
+        'robot.urdf.xacro'
+    )
+
+    # ================= GAZEBO =================
+
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                pkg_gazebo_ros,
+                'launch',
+                'gazebo.launch.py'
+            )
+        )
+    )
+
+    # =========================================================
+    # ROBOT 1
+    # =========================================================
+
+    robot1_description = ParameterValue(
+        Command([
+            'xacro ',
+            xacro_file,
+            ' prefix:=robot1_'
+        ]),
+        value_type=str
+    )
+
+    robot1_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        namespace='robot1',
+        parameters=[{
+            'robot_description': robot1_description,
+            'use_sim_time': True
+        }],
+        output='screen'
+    )
+
+    robot1_spawn = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-topic',
+            '/robot1/robot_description',
+
+            '-entity',
+            'robot1',
+
+            '-x', '0',
+            '-y', '0',
+            '-z', '0.1'
+        ],
+        output='screen'
+    )
+
+    # =========================================================
+    # ROBOT 2
+    # =========================================================
+
+    robot2_description = ParameterValue(
+        Command([
+            'xacro ',
+            xacro_file,
+            ' prefix:=robot2_'
+        ]),
+        value_type=str
+    )
+
+    robot2_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        namespace='robot2',
+        parameters=[{
+            'robot_description': robot2_description,
+            'use_sim_time': True
+        }],
+        output='screen'
+    )
+
+    robot2_spawn = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-topic',
+            '/robot2/robot_description',
+
+            '-entity',
+            'robot2',
+
+            '-x', '2',
+            '-y', '0',
+            '-z', '0.1'
+        ],
+        output='screen'
+    )
+
+    # =========================================================
+    # RVIZ
+    # =========================================================
+
+    rviz = Node(
+        package='rviz2',
+        executable='rviz2',
+        output='screen'
+    )
+
+    # =========================================================
+    # LAUNCH DESCRIPTION
+    # =========================================================
+
+    return LaunchDescription([
+
+        gazebo,
+
+        robot1_state_publisher,
+        robot1_spawn,
+
+        robot2_state_publisher,
+        robot2_spawn,
+
+        rviz
+
+    ])
+
+
+
+
+robot1_spawn = Node(
+    package='gazebo_ros',
+    executable='spawn_entity.py',
+    namespace='robot1',
+    arguments=[
+        '-topic', 'robot_description',
+        '-entity', 'robot1',
+        '-x', '0',
+        '-y', '0',
+        '-z', '0.1'
+    ],
+    output='screen'
+)
+
+
+
+
+
+
+
+
+<?xml version="1.0"?>
+
+<robot name="multi_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:arg name="prefix" default=""/>
+
+    <!-- ================= BASE LINK ================= -->
+
+    <link name="${prefix}base_link">
+
+        <visual>
+            <geometry>
+                <box size="0.5 0.4 0.2"/>
+            </geometry>
+
+            <material name="blue">
+                <color rgba="0 0 1 1"/>
+            </material>
+        </visual>
+
+        <collision>
+            <geometry>
+                <box size="0.5 0.4 0.2"/>
+            </geometry>
+        </collision>
+
+        <inertial>
+            <mass value="5.0"/>
+
+            <origin xyz="0 0 0"/>
+
+            <inertia
+                ixx="0.5"
+                ixy="0.0"
+                ixz="0.0"
+                iyy="0.5"
+                iyz="0.0"
+                izz="0.5"/>
+        </inertial>
+
+    </link>
+
+    <!-- ================= LEFT WHEEL ================= -->
+
+    <link name="${prefix}left_wheel">
+
+        <visual>
+            <geometry>
+                <cylinder radius="0.1" length="0.05"/>
+            </geometry>
+
+            <material name="black">
+                <color rgba="0 0 0 1"/>
+            </material>
+        </visual>
+
+    </link>
+
+    <joint name="${prefix}left_wheel_joint" type="continuous">
+
+        <parent link="${prefix}base_link"/>
+        <child link="${prefix}left_wheel"/>
+
+        <origin xyz="0 0.22 -0.05" rpy="1.5707 0 0"/>
+
+        <axis xyz="0 0 1"/>
+
+    </joint>
+
+    <!-- ================= RIGHT WHEEL ================= -->
+
+    <link name="${prefix}right_wheel">
+
+        <visual>
+            <geometry>
+                <cylinder radius="0.1" length="0.05"/>
+            </geometry>
+        </visual>
+
+    </link>
+
+    <joint name="${prefix}right_wheel_joint" type="continuous">
+
+        <parent link="${prefix}base_link"/>
+        <child link="${prefix}right_wheel"/>
+
+        <origin xyz="0 -0.22 -0.05" rpy="1.5707 0 0"/>
+
+        <axis xyz="0 0 1"/>
+
+    </joint>
+
+    <!-- ================= LIDAR ================= -->
+
+    <link name="${prefix}lidar_link">
+
+        <visual>
+            <geometry>
+                <cylinder radius="0.05" length="0.05"/>
+            </geometry>
+
+            <material name="green">
+                <color rgba="0 1 0 1"/>
+            </material>
+        </visual>
+
+    </link>
+
+    <joint name="${prefix}lidar_joint" type="fixed">
+
+        <parent link="${prefix}base_link"/>
+        <child link="${prefix}lidar_link"/>
+
+        <origin xyz="0.15 0 0.15"/>
+
+    </joint>
+
+    <!-- ================= CAMERA ================= -->
+
+    <link name="${prefix}camera_link">
+
+        <visual>
+            <geometry>
+                <box size="0.05 0.05 0.05"/>
+            </geometry>
+
+            <material name="red">
+                <color rgba="1 0 0 1"/>
+            </material>
+        </visual>
+
+    </link>
+
+    <joint name="${prefix}camera_joint" type="fixed">
+
+        <parent link="${prefix}base_link"/>
+        <child link="${prefix}camera_link"/>
+
+        <origin xyz="0.2 0 0.12"/>
+
+    </joint>
+
+    <!-- ================= GAZEBO DIFF DRIVE ================= -->
+
+    <gazebo>
+
+        <plugin name="${prefix}diff_drive"
+                filename="libgazebo_ros_diff_drive.so">
+
+            <ros>
+                <namespace>${prefix}</namespace>
+            </ros>
+
+            <left_joint>${prefix}left_wheel_joint</left_joint>
+            <right_joint>${prefix}right_wheel_joint</right_joint>
+
+            <wheel_separation>0.44</wheel_separation>
+            <wheel_diameter>0.2</wheel_diameter>
+
+            <topicName>cmd_vel</topicName>
+
+            <odometryTopic>odom</odometryTopic>
+
+            <odometryFrame>odom</odometryFrame>
+
+            <robotBaseFrame>${prefix}base_link</robotBaseFrame>
+
+            <publishWheelTF>true</publishWheelTF>
+
+            <publishOdom>true</publishOdom>
+
+        </plugin>
+
+    </gazebo>
+
+    <!-- ================= LIDAR PLUGIN ================= -->
+
+    <gazebo reference="${prefix}lidar_link">
+
+        <sensor name="${prefix}lidar_sensor"
+                type="ray">
+
+            <update_rate>10</update_rate>
+
+            <ray>
+
+                <scan>
+
+                    <horizontal>
+
+                        <samples>360</samples>
+
+                        <min_angle>-3.14</min_angle>
+
+                        <max_angle>3.14</max_angle>
+
+                    </horizontal>
+
+                </scan>
+
+                <range>
+
+                    <min>0.1</min>
+                    <max>10.0</max>
+
+                </range>
+
+            </ray>
+
+            <plugin name="${prefix}lidar_plugin"
+                    filename="libgazebo_ros_ray_sensor.so">
+
+                <ros>
+                    <namespace>${prefix}</namespace>
+                </ros>
+
+                <output_type>sensor_msgs/LaserScan</output_type>
+
+                <topicName>scan</topicName>
+
+                <frame_name>${prefix}lidar_link</frame_name>
+
+            </plugin>
+
+        </sensor>
+
+    </gazebo>
+
+    <!-- ================= CAMERA PLUGIN ================= -->
+
+    <gazebo reference="${prefix}camera_link">
+
+        <sensor name="${prefix}camera_sensor"
+                type="camera">
+
+            <update_rate>30</update_rate>
+
+            <camera>
+
+                <horizontal_fov>1.047</horizontal_fov>
+
+                <image>
+                    <width>640</width>
+                    <height>480</height>
+                    <format>R8G8B8</format>
+                </image>
+
+                <clip>
+                    <near>0.1</near>
+                    <far>100</far>
+                </clip>
+
+            </camera>
+
+            <plugin name="${prefix}camera_plugin"
+                    filename="libgazebo_ros_camera.so">
+
+                <ros>
+                    <namespace>${prefix}</namespace>
+                </ros>
+
+                <cameraName>camera</cameraName>
+
+                <imageTopicName>image_raw</imageTopicName>
+
+                <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+
+                <frameName>${prefix}camera_link</frameName>
+
+            </plugin>
+
+        </sensor>
+
+    </gazebo>
+
+</robot>
+
+
+
+
