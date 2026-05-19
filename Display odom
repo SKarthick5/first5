@@ -1,0 +1,403 @@
+import React, { useEffect, useState } from "react";
+import ROSLIB from "roslib";
+
+function App() {
+
+  const [robots, setRobots] = useState({});
+
+  useEffect(() => {
+
+    // ================= ROS CONNECTION =================
+
+    const ros = new ROSLIB.Ros({
+      url: "ws://localhost:9090"
+    });
+
+    ros.on("connection", () => {
+      console.log("Connected");
+    });
+
+    ros.on("error", (error) => {
+      console.log(error);
+    });
+
+    // ================= GET TOPICS =================
+
+    ros.getTopics((result) => {
+
+      console.log(result.topics);
+
+      // Find all odom topics
+      const odomTopics = result.topics.filter(topic =>
+        topic.endsWith("/odom")
+      );
+
+      console.log("Detected Robots:", odomTopics);
+
+      // ================= CREATE SUBSCRIBERS =================
+
+      odomTopics.forEach((topicName) => {
+
+        // Example:
+        // /robot1/odom
+
+        const namespace = topicName.split("/")[1];
+
+        const odomListener = new ROSLIB.Topic({
+          ros: ros,
+          name: topicName,
+          messageType: "nav_msgs/msg/Odometry"
+        });
+
+        odomListener.subscribe((msg) => {
+
+          setRobots(prev => ({
+            ...prev,
+
+            [namespace]: {
+
+              x: msg.pose.pose.position.x,
+              y: msg.pose.pose.position.y
+
+            }
+
+          }));
+
+        });
+
+      });
+
+    });
+
+  }, []);
+
+  // ================= RENDER =================
+
+  return (
+
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background: "#eeeeee",
+        position: "relative",
+        overflow: "hidden"
+      }}
+    >
+
+      <h1>Dynamic Multi Robot Map</h1>
+
+      {
+
+        Object.entries(robots).map(([name, robot], index) => (
+
+          <div
+            key={name}
+            style={{
+              position: "absolute",
+
+              left: robot.x * 50 + 400,
+              top: robot.y * 50 + 300,
+
+              width: 40,
+              height: 40,
+
+              borderRadius: "50%",
+
+              background:
+                index % 2 === 0
+                  ? "red"
+                  : "blue",
+
+              color: "white",
+
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+
+              fontSize: 10,
+
+              transition: "0.1s"
+            }}
+          >
+            {name}
+          </div>
+
+        ))
+
+      }
+
+    </div>
+
+  );
+}
+
+export default App;
+
+
+
+
+
+
+export default function MultiRobotMap() {
+  return (
+    <div className="w-full h-screen bg-gray-100 flex items-center justify-center">
+      <RobotMap />
+    </div>
+  )
+}
+
+import React, { useEffect, useRef, useState } from "react";
+import ROSLIB from "roslib";
+
+function RobotMap() {
+
+  const canvasRef = useRef(null);
+
+  const [robots, setRobots] = useState({});
+
+  // ================= ROS CONNECTION =================
+
+  useEffect(() => {
+
+    const ros = new ROSLIB.Ros({
+      url: "ws://localhost:9090"
+    });
+
+    ros.on("connection", () => {
+      console.log("Connected to ROSBridge");
+    });
+
+    ros.on("error", (error) => {
+      console.log(error);
+    });
+
+    ros.on("close", () => {
+      console.log("ROS Connection Closed");
+    });
+
+    // ================= GET TOPICS =================
+
+    ros.getTopics((result) => {
+
+      const odomTopics = result.topics.filter(topic =>
+        topic.endsWith("/odom")
+      );
+
+      console.log("Detected Robots:", odomTopics);
+
+      odomTopics.forEach((topicName) => {
+
+        // Example:
+        // /robot1/odom
+
+        const namespace = topicName.split("/")[1];
+
+        const odomListener = new ROSLIB.Topic({
+          ros: ros,
+          name: topicName,
+          messageType: "nav_msgs/msg/Odometry"
+        });
+
+        odomListener.subscribe((msg) => {
+
+          const position = msg.pose.pose.position;
+          const orientation = msg.pose.pose.orientation;
+
+          // Quaternion to yaw
+
+          const siny_cosp = 2 * (
+            orientation.w * orientation.z +
+            orientation.x * orientation.y
+          );
+
+          const cosy_cosp = 1 - 2 * (
+            orientation.y * orientation.y +
+            orientation.z * orientation.z
+          );
+
+          const yaw = Math.atan2(siny_cosp, cosy_cosp);
+
+          setRobots(prev => ({
+            ...prev,
+
+            [namespace]: {
+              x: position.x,
+              y: position.y,
+              yaw: yaw
+            }
+          }));
+
+        });
+
+      });
+
+    });
+
+  }, []);
+
+  // ================= DRAW MAP =================
+
+  useEffect(() => {
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Clear canvas
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Background
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+
+    // ================= GRID =================
+
+    ctx.strokeStyle = "#dddddd";
+
+    for (let x = 0; x < width; x += 50) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    for (let y = 0; y < height; y += 50) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
+    // ================= CENTER AXES =================
+
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+
+    // X Axis
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+
+    // Y Axis
+    ctx.beginPath();
+    ctx.moveTo(width / 2, 0);
+    ctx.lineTo(width / 2, height);
+    ctx.stroke();
+
+    // ================= DRAW ROBOTS =================
+
+    const colors = [
+      "red",
+      "blue",
+      "green",
+      "orange",
+      "purple",
+      "brown",
+      "pink"
+    ];
+
+    Object.entries(robots).forEach(([name, robot], index) => {
+
+      const scale = 50;
+
+      // ROS coordinates → Canvas coordinates
+
+      const canvasX = width / 2 + robot.x * scale;
+      const canvasY = height / 2 - robot.y * scale;
+
+      ctx.save();
+
+      ctx.translate(canvasX, canvasY);
+      ctx.rotate(-robot.yaw);
+
+      // Robot Body
+
+      ctx.fillStyle = colors[index % colors.length];
+
+      ctx.beginPath();
+      ctx.arc(0, 0, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Direction Arrow
+
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 3;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(20, 0);
+      ctx.stroke();
+
+      // Arrow Head
+
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(12, -5);
+      ctx.lineTo(12, 5);
+      ctx.closePath();
+      ctx.fillStyle = "black";
+      ctx.fill();
+
+      ctx.restore();
+
+      // Robot Name
+
+      ctx.fillStyle = "black";
+      ctx.font = "14px Arial";
+      ctx.fillText(name, canvasX - 20, canvasY - 25);
+
+      // Coordinates
+
+      ctx.font = "12px Arial";
+      ctx.fillText(
+        `(${robot.x.toFixed(2)}, ${robot.y.toFixed(2)})`,
+        canvasX - 30,
+        canvasY + 35
+      );
+
+    });
+
+  }, [robots]);
+
+  return (
+
+    <div className="bg-white rounded-3xl shadow-2xl p-4">
+
+      <div className="mb-4 flex justify-between items-center">
+
+        <h1 className="text-2xl font-bold">
+          ROS2 Multi Robot Map
+        </h1>
+
+        <div className="text-sm text-gray-600">
+          Active Robots: {Object.keys(robots).length}
+        </div>
+
+      </div>
+
+      <canvas
+        ref={canvasRef}
+        width={1000}
+        height={700}
+        className="border rounded-2xl"
+      />
+
+      <div className="mt-4 text-sm text-gray-600">
+        Dynamic robot detection from ROS2 odom topics
+      </div>
+
+    </div>
+
+  );
+}
+
+
+
+
+
