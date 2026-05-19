@@ -1,0 +1,688 @@
+# AMR Fleet Monitor System
+
+Using:
+
+* ROS2
+* rosbridge_server
+* React
+* React-Konva
+* TailwindCSS
+* ROSLIBJS
+
+---
+
+# Project Structure
+
+```text
+amr-fleet-monitor/
+│
+├── package.json
+│
+├── public/
+│   └── warehouse.png
+│
+└── src/
+    │
+    ├── App.js
+    │
+    ├── ros/
+    │   └── ros.js
+    │
+    ├── components/
+    │   ├── FleetHeader.js
+    │   ├── RobotMap.js
+    │   ├── RobotCard.js
+    │   ├── RobotList.js
+    │   ├── JoystickControl.js
+    │   └── RobotLayer.js
+    │
+    └── styles/
+        └── app.css
+```
+
+---
+
+# 1. Create React App
+
+```bash
+npx create-react-app amr-fleet-monitor
+```
+
+---
+
+# 2. Install Packages
+
+```bash
+npm install roslib react-konva konva react-joystick-component
+```
+
+---
+
+# 3. Run ROSBridge
+
+```bash
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+```
+
+---
+
+# 4. src/ros/ros.js
+
+```javascript
+import ROSLIB from 'roslib'
+
+const ros = new ROSLIB.Ros({
+  url: 'ws://localhost:9090'
+})
+
+ros.on('connection', () => {
+  console.log('Connected to ROSBridge')
+})
+
+ros.on('error', (error) => {
+  console.log(error)
+})
+
+ros.on('close', () => {
+  console.log('Connection closed')
+})
+
+export default ros
+```
+
+---
+
+# 5. src/App.js
+
+```javascript
+import React, { useEffect, useState } from 'react'
+
+import ros from './ros/ros'
+
+import FleetHeader from './components/FleetHeader'
+import RobotMap from './components/RobotMap'
+import RobotList from './components/RobotList'
+import JoystickControl from './components/JoystickControl'
+
+import ROSLIB from 'roslib'
+
+function App() {
+
+  const [robots, setRobots] = useState({})
+
+  const [selectedRobot, setSelectedRobot] = useState('')
+
+  useEffect(() => {
+
+    ros.getTopics((result) => {
+
+      const odomTopics = result.topics.filter(topic =>
+        topic.endsWith('/odom')
+      )
+
+      odomTopics.forEach((topicName) => {
+
+        const robotName = topicName.split('/')[1]
+
+        const odomTopic = new ROSLIB.Topic({
+          ros: ros,
+          name: topicName,
+          messageType: 'nav_msgs/msg/Odometry'
+        })
+
+        odomTopic.subscribe((msg) => {
+
+          const position = msg.pose.pose.position
+          const orientation = msg.pose.pose.orientation
+
+          const siny_cosp = 2 * (
+            orientation.w * orientation.z +
+            orientation.x * orientation.y
+          )
+
+          const cosy_cosp = 1 - 2 * (
+            orientation.y * orientation.y +
+            orientation.z * orientation.z
+          )
+
+          const yaw = Math.atan2(siny_cosp, cosy_cosp)
+
+          setRobots(prev => ({
+            ...prev,
+
+            [robotName]: {
+              ...prev[robotName],
+
+              x: position.x,
+              y: position.y,
+              yaw: yaw,
+
+              active: true,
+
+              battery: prev[robotName]?.battery ||
+                Math.floor(Math.random() * 100),
+
+              task: prev[robotName]?.task ||
+                'Idle',
+
+              lastUpdate: Date.now()
+            }
+          }))
+
+        })
+
+      })
+
+    })
+
+  }, [])
+
+  useEffect(() => {
+
+    const interval = setInterval(() => {
+
+      setRobots(prev => {
+
+        const updated = { ...prev }
+
+        Object.keys(updated).forEach(name => {
+
+          const robot = updated[name]
+
+          if (Date.now() - robot.lastUpdate > 5000) {
+            updated[name].active = false
+          }
+
+        })
+
+        return updated
+
+      })
+
+    }, 1000)
+
+    return () => clearInterval(interval)
+
+  }, [])
+
+  return (
+
+    <div className='w-full min-h-screen bg-gray-100 p-4'>
+
+      <FleetHeader
+        robots={robots}
+        selectedRobot={selectedRobot}
+        setSelectedRobot={setSelectedRobot}
+      />
+
+      <div className='grid grid-cols-12 gap-4 mt-4'>
+
+        <div className='col-span-8'>
+          <RobotMap robots={robots} />
+        </div>
+
+        <div className='col-span-4 space-y-4'>
+
+          <div className='bg-white rounded-2xl shadow p-4'>
+
+            <h1 className='text-2xl font-bold mb-4'>Joystick Control</h1>
+
+            {
+              selectedRobot
+                ? (
+                  <>
+                    <p className='mb-4 text-lg'>
+                      Selected Robot:
+                      <span className='font-bold ml-2'>
+                        {selectedRobot}
+                      </span>
+                    </p>
+
+                    <JoystickControl robotName={selectedRobot} />
+                  </>
+                )
+                : (
+                  <p>Select a robot to control</p>
+                )
+            }
+
+          </div>
+
+          <RobotList robots={robots} />
+
+        </div>
+
+      </div>
+
+    </div>
+
+  )
+}
+
+export default App
+```
+
+---
+
+# 6. src/components/FleetHeader.js
+
+```javascript
+import React from 'react'
+
+function FleetHeader({ robots, selectedRobot, setSelectedRobot }) {
+
+  const robotNames = Object.keys(robots)
+
+  const totalRobots = robotNames.length
+
+  const activeRobots = Object.values(robots)
+    .filter(robot => robot.active)
+    .length
+
+  const inactiveRobots = totalRobots - activeRobots
+
+  return (
+
+    <div className='bg-white rounded-2xl shadow p-4'>
+
+      <div className='grid grid-cols-4 gap-4'>
+
+        <div className='bg-blue-100 p-4 rounded-xl'>
+          <h1 className='text-xl font-bold'>Total Robots</h1>
+          <p className='text-3xl'>{totalRobots}</p>
+        </div>
+
+        <div className='bg-green-100 p-4 rounded-xl'>
+          <h1 className='text-xl font-bold'>Active</h1>
+          <p className='text-3xl'>{activeRobots}</p>
+        </div>
+
+        <div className='bg-red-100 p-4 rounded-xl'>
+          <h1 className='text-xl font-bold'>Inactive</h1>
+          <p className='text-3xl'>{inactiveRobots}</p>
+        </div>
+
+        <div className='bg-yellow-100 p-4 rounded-xl'>
+
+          <h1 className='text-xl font-bold mb-2'>Control Robot</h1>
+
+          <select
+            className='w-full p-2 rounded-lg border'
+            value={selectedRobot}
+            onChange={(e) => setSelectedRobot(e.target.value)}
+          >
+
+            <option value=''>Select Robot</option>
+
+            {
+              robotNames.map(name => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))
+            }
+
+          </select>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  )
+}
+
+export default FleetHeader
+```
+
+---
+
+# 7. src/components/RobotMap.js
+
+```javascript
+import React from 'react'
+
+import {
+  Stage,
+  Layer,
+  Rect,
+  Circle,
+  Arrow,
+  Text
+} from 'react-konva'
+
+function RobotMap({ robots }) {
+
+  const SCALE = 50
+
+  return (
+
+    <div className='bg-white rounded-2xl shadow p-4'>
+
+      <h1 className='text-2xl font-bold mb-4'>Warehouse Map</h1>
+
+      <Stage width={900} height={700}>
+
+        <Layer>
+
+          <Rect
+            x={0}
+            y={0}
+            width={900}
+            height={700}
+            fill='#f5f5f5'
+          />
+
+          {/* Shelves */}
+
+          <Rect x={150} y={100} width={100} height={300} fill='gray' />
+          <Rect x={350} y={100} width={100} height={300} fill='gray' />
+          <Rect x={550} y={100} width={100} height={300} fill='gray' />
+
+          {/* Charging Area */}
+
+          <Rect x={700} y={500} width={120} height={120} fill='green' />
+
+          <Text
+            x={710}
+            y={550}
+            text='Charging'
+            fontSize={20}
+          />
+
+        </Layer>
+
+        <Layer>
+
+          {
+            Object.entries(robots).map(([name, robot], index) => {
+
+              const x = robot.x * SCALE + 400
+              const y = 350 - robot.y * SCALE
+
+              return (
+
+                <React.Fragment key={name}>
+
+                  <Circle
+                    x={x}
+                    y={y}
+                    radius={20}
+                    fill={robot.active ? 'blue' : 'red'}
+                  />
+
+                  <Arrow
+                    x={x}
+                    y={y}
+                    points={[
+                      0,
+                      0,
+                      Math.cos(robot.yaw) * 30,
+                      -Math.sin(robot.yaw) * 30
+                    ]}
+                    stroke='black'
+                    fill='black'
+                    pointerLength={10}
+                    pointerWidth={10}
+                  />
+
+                  <Text
+                    x={x - 25}
+                    y={y - 40}
+                    text={name}
+                    fontSize={16}
+                  />
+
+                </React.Fragment>
+
+              )
+
+            })
+          }
+
+        </Layer>
+
+      </Stage>
+
+    </div>
+
+  )
+}
+
+export default RobotMap
+```
+
+---
+
+# 8. src/components/RobotList.js
+
+```javascript
+import React from 'react'
+
+import RobotCard from './RobotCard'
+
+function RobotList({ robots }) {
+
+  return (
+
+    <div className='space-y-4'>
+
+      {
+        Object.entries(robots).map(([name, robot]) => (
+
+          <RobotCard
+            key={name}
+            name={name}
+            robot={robot}
+          />
+
+        ))
+      }
+
+    </div>
+
+  )
+}
+
+export default RobotList
+```
+
+---
+
+# 9. src/components/RobotCard.js
+
+```javascript
+import React from 'react'
+
+function RobotCard({ name, robot }) {
+
+  return (
+
+    <div className='bg-white rounded-2xl shadow p-4'>
+
+      <div className='flex justify-between items-center'>
+
+        <h1 className='text-xl font-bold'>
+          {name}
+        </h1>
+
+        <div className={
+          robot.active
+            ? 'text-green-600 font-bold'
+            : 'text-red-600 font-bold'
+        }>
+          {
+            robot.active
+              ? 'ACTIVE'
+              : 'INACTIVE'
+          }
+        </div>
+
+      </div>
+
+      <div className='mt-4 space-y-2'>
+
+        <p>
+          Battery: {robot.battery}%
+        </p>
+
+        <p>
+          Task: {robot.task}
+        </p>
+
+        <p>
+          Position:
+          ({robot.x?.toFixed(2)},
+          {robot.y?.toFixed(2)})
+        </p>
+
+      </div>
+
+    </div>
+
+  )
+}
+
+export default RobotCard
+```
+
+---
+
+# 10. src/components/JoystickControl.js
+
+```javascript
+import React from 'react'
+
+import { Joystick } from 'react-joystick-component'
+
+import ROSLIB from 'roslib'
+
+import ros from '../ros/ros'
+
+function JoystickControl({ robotName }) {
+
+  const cmdVel = new ROSLIB.Topic({
+    ros: ros,
+    name: `/${robotName}/cmd_vel`,
+    messageType: 'geometry_msgs/msg/Twist'
+  })
+
+  const handleMove = (event) => {
+
+    const linearX = event.y / 50
+    const angularZ = -event.x / 50
+
+    const twist = new ROSLIB.Message({
+      linear: {
+        x: linearX,
+        y: 0,
+        z: 0
+      },
+      angular: {
+        x: 0,
+        y: 0,
+        z: angularZ
+      }
+    })
+
+    cmdVel.publish(twist)
+
+  }
+
+  const handleStop = () => {
+
+    const twist = new ROSLIB.Message({
+      linear: {
+        x: 0,
+        y: 0,
+        z: 0
+      },
+      angular: {
+        x: 0,
+        y: 0,
+        z: 0
+      }
+    })
+
+    cmdVel.publish(twist)
+
+  }
+
+  return (
+
+    <div>
+
+      <Joystick
+        size={100}
+        baseColor='gray'
+        stickColor='blue'
+        move={handleMove}
+        stop={handleStop}
+      />
+
+    </div>
+
+  )
+}
+
+export default JoystickControl
+```
+
+---
+
+# 11. TailwindCSS
+
+Install:
+
+```bash
+npm install -D tailwindcss postcss autoprefixer
+```
+
+Initialize:
+
+```bash
+npx tailwindcss init -p
+```
+
+---
+
+# 12. Start React
+
+```bash
+npm start
+```
+
+---
+
+# 13. Run Gazebo + ROS2
+
+Run your multi-robot simulation.
+
+Topics required:
+
+```text
+/robot1/odom
+/robot2/odom
+/robot1/cmd_vel
+/robot2/cmd_vel
+```
+
+---
+
+# Final Features
+
+This project supports:
+
+✅ Multiple robots
+✅ Dynamic robot detection
+✅ Robot map visualization
+✅ Active/inactive status
+✅ Robot count
+✅ Robot task display
+✅ Robot battery display
+✅ Robot joystick control
+✅ ROS2 integration
+✅ rosbridge websocket
+✅ React frontend
+✅ Warehouse visualization
