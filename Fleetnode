@@ -1,0 +1,313 @@
+import rclpy
+
+from rclpy.node import Node
+
+from std_msgs.msg import String
+
+from nav_msgs.msg import Odometry
+
+import json
+
+import time
+
+
+class FleetManager(Node):
+
+    def __init__(self):
+
+        super().__init__('fleet_manager')
+
+        self.robots = {}
+
+        self.publisher = self.create_publisher(
+            String,
+            '/fleet_data',
+            10
+        )
+
+        self.timer = self.create_timer(
+            1.0,
+            self.publish_fleet_data
+        )
+
+        self.discover_timer = self.create_timer(
+            2.0,
+            self.discover_robots
+        )
+
+    def discover_robots(self):
+
+        topics = self.get_topic_names_and_types()
+
+        for topic_name, topic_type in topics:
+
+            if topic_name.endswith('/odom'):
+
+                robot_name = topic_name.split('/')[1]
+
+                if robot_name not in self.robots:
+
+                    self.get_logger().info(
+                        f'Detected {robot_name}'
+                    )
+
+                    self.robots[robot_name] = {
+
+                        'name': robot_name,
+
+                        'active': True,
+
+                        'battery': 100,
+
+                        'task': 'Idle',
+
+                        'x': 0.0,
+
+                        'y': 0.0,
+
+                        'yaw': 0.0,
+
+                        'last_update': time.time()
+
+                    }
+
+                    self.create_subscription(
+                        Odometry,
+                        topic_name,
+                        lambda msg,
+                        name=robot_name:
+                        self.odom_callback(msg, name),
+                        10
+                    )
+
+    def odom_callback(self, msg, robot_name):
+
+        position = msg.pose.pose.position
+
+        orientation = msg.pose.pose.orientation
+
+        siny_cosp = 2 * (
+            orientation.w * orientation.z +
+            orientation.x * orientation.y
+        )
+
+        cosy_cosp = 1 - 2 * (
+            orientation.y * orientation.y +
+            orientation.z * orientation.z
+        )
+
+        yaw = math.atan2(
+            siny_cosp,
+            cosy_cosp
+        )
+
+        self.robots[robot_name]['x'] = position.x
+
+        self.robots[robot_name]['y'] = position.y
+
+        self.robots[robot_name]['yaw'] = yaw
+
+        self.robots[robot_name]['active'] = True
+
+        self.robots[robot_name]['last_update'] = time.time()
+
+    def publish_fleet_data(self):
+
+        current_time = time.time()
+
+        for robot_name in self.robots:
+
+            if (
+                current_time -
+                self.robots[robot_name]['last_update']
+                > 5
+            ):
+
+                self.robots[robot_name]['active'] = False
+
+        fleet_data = {
+
+            'robots': list(
+                self.robots.values()
+            ),
+
+            'total_robots': len(self.robots),
+
+            'active_robots': len([
+
+                r for r in self.robots.values()
+
+                if r['active']
+
+            ]),
+
+            'inactive_robots': len([
+
+                r for r in self.robots.values()
+
+                if not r['active']
+
+            ])
+
+        }
+
+        msg = String()
+
+        msg.data = json.dumps(fleet_data)
+
+        self.publisher.publish(msg)
+
+
+def main(args=None):
+
+    rclpy.init(args=args)
+
+    node = FleetManager()
+
+    rclpy.spin(node)
+
+    node.destroy_node()
+
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+
+    main()
+
+
+
+npm install roslib react-konva konva
+
+
+import React, {
+
+  useEffect,
+  useState
+
+} from 'react'
+
+import ROSLIB from 'roslib'
+
+function App() {
+
+  const [fleetData, setFleetData] =
+    useState({
+
+      robots: [],
+
+      total_robots: 0,
+
+      active_robots: 0,
+
+      inactive_robots: 0
+
+    })
+
+  useEffect(() => {
+
+    const ros = new ROSLIB.Ros({
+
+      url: 'ws://localhost:9090'
+
+    })
+
+    const fleetTopic = new ROSLIB.Topic({
+
+      ros: ros,
+
+      name: '/fleet_data',
+
+      messageType: 'std_msgs/msg/String'
+
+    })
+
+    fleetTopic.subscribe((msg) => {
+
+      const data = JSON.parse(msg.data)
+
+      setFleetData(data)
+
+    })
+
+  }, [])
+
+  return (
+
+    <div>
+
+      <h1>
+        AMR Fleet Monitor
+      </h1>
+
+      <div>
+
+        <h2>
+          Total Robots:
+          {fleetData.total_robots}
+        </h2>
+
+        <h2>
+          Active:
+          {fleetData.active_robots}
+        </h2>
+
+        <h2>
+          Inactive:
+          {fleetData.inactive_robots}
+        </h2>
+
+      </div>
+
+      <div>
+
+        {
+
+          fleetData.robots.map(robot => (
+
+            <div key={robot.name}>
+
+              <h3>
+                {robot.name}
+              </h3>
+
+              <p>
+                Status:
+                {
+                  robot.active
+                    ? 'ACTIVE'
+                    : 'INACTIVE'
+                }
+              </p>
+
+              <p>
+                Position:
+                ({robot.x.toFixed(2)},
+                {robot.y.toFixed(2)})
+              </p>
+
+              <p>
+                Battery:
+                {robot.battery}%
+              </p>
+
+              <p>
+                Task:
+                {robot.task}
+              </p>
+
+            </div>
+
+          ))
+
+        }
+
+      </div>
+
+    </div>
+
+  )
+
+}
+
+export default App
