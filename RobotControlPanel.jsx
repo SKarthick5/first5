@@ -1,18 +1,17 @@
 // ========================================
 // RobotControlPanel.jsx
+// npm uninstall nipplejs
+// npm install nipplejs@0.9.0
 // ========================================
 
 import { useEffect, useRef, useState } from "react";
-
 import nipplejs from "nipplejs";
 
 const ROSLIB = window.ROSLIB;
 
 export default function RobotControlPanel({
-
   ros,
   robots,
-
 }) {
 
   // =========================
@@ -31,23 +30,24 @@ export default function RobotControlPanel({
     useState(1.0);
 
   // =========================
-  // JOYSTICK CONTAINER
+  // REFS
   // =========================
   const joystickRef = useRef(null);
 
-  // =========================
-  // CMD_VEL
-  // =========================
   const cmdVelRef = useRef(null);
 
   // =========================
-  // CREATE CMD_VEL TOPIC
+  // CREATE CMD_VEL
   // =========================
   useEffect(() => {
 
-    if (!ros) return;
+    if (!ros) {
+      return;
+    }
 
-    if (!selectedRobot) return;
+    if (!selectedRobot) {
+      return;
+    }
 
     cmdVelRef.current =
       new ROSLIB.Topic({
@@ -61,34 +61,41 @@ export default function RobotControlPanel({
           "geometry_msgs/Twist",
       });
 
+    console.log(
+      "Connected:",
+      `/${selectedRobot}/cmd_vel`
+    );
+
   }, [ros, selectedRobot]);
 
   // =========================
   // SEND VELOCITY
   // =========================
   const sendVelocity = (
-
     linear,
     angular
-
   ) => {
 
     if (!cmdVelRef.current) {
       return;
     }
 
+    console.log(
+      "SEND:",
+      linear,
+      angular
+    );
+
     const twist =
       new ROSLIB.Message({
 
         linear: {
-
           x: linear,
           y: 0,
           z: 0,
         },
 
         angular: {
-
           x: 0,
           y: 0,
           z: angular,
@@ -105,11 +112,13 @@ export default function RobotControlPanel({
   // =========================
   const stopRobot = () => {
 
+    console.log("STOP");
+
     sendVelocity(0, 0);
   };
 
   // =========================
-  // NIPPLE JOYSTICK
+  // JOYSTICK
   // =========================
   useEffect(() => {
 
@@ -126,7 +135,6 @@ export default function RobotControlPanel({
         mode: "static",
 
         position: {
-
           left: "50%",
           top: "50%",
         },
@@ -136,37 +144,67 @@ export default function RobotControlPanel({
         size: 180,
       });
 
+    // =========================
+    // START
+    // =========================
+    manager.on(
+      "start",
+      () => {
+
+        console.log(
+          "JOYSTICK START"
+        );
+      }
+    );
+
+    // =========================
     // MOVE
+    // =========================
     manager.on(
       "move",
-      (evt, data) => {
+      (event, nipple) => {
 
-        if (!data) return;
+        console.log(
+          "NIPPLE:",
+          nipple
+        );
 
+        if (!nipple) {
+          return;
+        }
+
+        // DISTANCE
         const distance =
-          data.distance || 0;
+          nipple.distance || 0;
 
-        const angle =
-          data.angle.radian;
+        // ANGLE
+        const radian =
+          nipple.angle?.radian || 0;
 
-        // NORMALIZE
+        // NORMALIZE FORCE
         const force =
           Math.min(
             distance / 75,
             1
           );
 
-        // FORWARD/BACKWARD
+        // LINEAR
         const linear =
-          Math.sin(angle) *
+          Math.sin(radian) *
           linearSpeed *
           force;
 
-        // LEFT/RIGHT
+        // ANGULAR
         const angular =
-          -Math.cos(angle) *
+          -Math.cos(radian) *
           angularSpeed *
           force;
+
+        console.log(
+          "MOVE:",
+          linear,
+          angular
+        );
 
         sendVelocity(
           linear,
@@ -175,10 +213,16 @@ export default function RobotControlPanel({
       }
     );
 
-    // STOP
+    // =========================
+    // END
+    // =========================
     manager.on(
       "end",
       () => {
+
+        console.log(
+          "JOYSTICK END"
+        );
 
         stopRobot();
       }
@@ -190,10 +234,9 @@ export default function RobotControlPanel({
     };
 
   }, [
-
+    selectedRobot,
     linearSpeed,
     angularSpeed,
-    selectedRobot,
   ]);
 
   // =========================
@@ -228,6 +271,7 @@ export default function RobotControlPanel({
   };
 
   return (
+
     <div
       style={{
 
@@ -262,14 +306,13 @@ export default function RobotControlPanel({
         Robot Control
       </h2>
 
-      {/* SELECT ROBOT */}
+      {/* SELECT */}
       <div>
 
         <div
           style={{
             marginBottom: "10px",
             color: "#9ca3af",
-            fontSize: "14px",
           }}
         >
           Select Robot
@@ -321,7 +364,7 @@ export default function RobotControlPanel({
         </select>
       </div>
 
-      {/* LINEAR SPEED */}
+      {/* LINEAR */}
       <div>
 
         <div
@@ -366,7 +409,7 @@ export default function RobotControlPanel({
         </div>
       </div>
 
-      {/* ANGULAR SPEED */}
+      {/* ANGULAR */}
       <div>
 
         <div
@@ -446,7 +489,7 @@ export default function RobotControlPanel({
         />
       </div>
 
-      {/* STOP BUTTON */}
+      {/* STOP */}
       <button
         onClick={stopRobot}
         style={{
@@ -471,7 +514,7 @@ export default function RobotControlPanel({
         EMERGENCY STOP
       </button>
 
-      {/* ROBOT INFO */}
+      {/* INFO */}
       {
         selectedRobot &&
         robots[selectedRobot] && (
@@ -534,7 +577,6 @@ export default function RobotControlPanel({
 // ========================================
 // SPEED CONTAINER
 // ========================================
-
 const speedContainer = {
 
   display: "flex",
@@ -547,7 +589,6 @@ const speedContainer = {
 // ========================================
 // SPEED BUTTON
 // ========================================
-
 const speedButton = {
 
   width: "40px",
@@ -570,15 +611,13 @@ const speedButton = {
 // ========================================
 // INFO ROW
 // ========================================
-
 function InfoRow({
-
   label,
   value,
-
 }) {
 
   return (
+
     <div
       style={{
 
