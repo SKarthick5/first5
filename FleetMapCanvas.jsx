@@ -7,11 +7,9 @@ import { useEffect, useRef } from "react";
 const ROSLIB = window.ROSLIB;
 
 export default function FleetMapCanvas({
-
   ros,
   robots,
   setRobots,
-
 }) {
 
   const canvasRef = useRef(null);
@@ -22,20 +20,21 @@ export default function FleetMapCanvas({
   // MAP INFO
   const mapInfoRef = useRef(null);
 
+  // ROBOT STATE REF
+  const robotsRef = useRef({});
+
+  // INITIAL MAP FIT
+  const initializedRef = useRef(false);
+
   // ROBOT TOPICS
-  const robotSubscribersRef =
-    useRef({});
+  const robotSubscribersRef = useRef({});
 
   // CAMERA
   const cameraRef = useRef({
-
     scale: 1,
-
     offsetX: 0,
     offsetY: 0,
-
     isDragging: false,
-
     lastX: 0,
     lastY: 0,
   });
@@ -44,27 +43,26 @@ export default function FleetMapCanvas({
 
     if (!ros) return;
 
-    const canvas =
-      canvasRef.current;
+    const canvas = canvasRef.current;
 
-    const ctx =
-      canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
 
-    ctx.imageSmoothingEnabled =
-      false;
+    ctx.imageSmoothingEnabled = false;
 
+    // ======================================
     // OFFSCREEN MAP
+    // ======================================
+
     const mapCanvas =
-      document.createElement(
-        "canvas"
-      );
+      document.createElement("canvas");
 
     const mapCtx =
       mapCanvas.getContext("2d");
 
-    // ======================
+    // ======================================
     // RESIZE
-    // ======================
+    // ======================================
+
     const resizeCanvas = () => {
 
       const parent =
@@ -79,9 +77,10 @@ export default function FleetMapCanvas({
       drawScene();
     };
 
-    // ======================
-    // WORLD → MAP
-    // ======================
+    // ======================================
+    // WORLD -> MAP
+    // ======================================
+
     const worldToMap = (
       wx,
       wy
@@ -91,7 +90,6 @@ export default function FleetMapCanvas({
         mapInfoRef.current;
 
       if (!mapInfo) {
-
         return {
           x: 0,
           y: 0,
@@ -122,9 +120,10 @@ export default function FleetMapCanvas({
       };
     };
 
-    // ======================
+    // ======================================
     // GRID
-    // ======================
+    // ======================================
+
     const drawGrid = () => {
 
       const gridSize = 50;
@@ -171,15 +170,18 @@ export default function FleetMapCanvas({
       }
     };
 
-    // ======================
+    // ======================================
     // DRAW ROBOTS
-    // ======================
+    // ======================================
+
     const drawRobots = () => {
 
       const camera =
         cameraRef.current;
 
-      Object.entries(robots).forEach(
+      Object.entries(
+        robotsRef.current
+      ).forEach(
         ([name, robot]) => {
 
           const pos =
@@ -246,10 +248,10 @@ export default function FleetMapCanvas({
 
           ctx.stroke();
 
-          // RESET
+          // RESET ROTATION
           ctx.rotate(robot.theta);
 
-          // FIX TEXT SIZE
+          // FIX TEXT SCALE
           ctx.scale(
             1 / camera.scale,
             1 / camera.scale
@@ -272,9 +274,10 @@ export default function FleetMapCanvas({
       );
     };
 
-    // ======================
+    // ======================================
     // DRAW SCENE
-    // ======================
+    // ======================================
+
     const drawScene = () => {
 
       const camera =
@@ -329,9 +332,10 @@ export default function FleetMapCanvas({
       drawRobots();
     };
 
-    // ======================
+    // ======================================
     // RENDER MAP
-    // ======================
+    // ======================================
+
     const renderMap = (
       map
     ) => {
@@ -411,25 +415,14 @@ export default function FleetMapCanvas({
           const pixel =
             (
               flippedY *
-                mapWidth +
+              mapWidth +
               x
             ) * 4;
 
-          imageData.data[
-            pixel + 0
-          ] = r;
-
-          imageData.data[
-            pixel + 1
-          ] = g;
-
-          imageData.data[
-            pixel + 2
-          ] = b;
-
-          imageData.data[
-            pixel + 3
-          ] = 255;
+          imageData.data[pixel + 0] = r;
+          imageData.data[pixel + 1] = g;
+          imageData.data[pixel + 2] = b;
+          imageData.data[pixel + 3] = 255;
         }
       }
 
@@ -442,47 +435,48 @@ export default function FleetMapCanvas({
       mapImageRef.current =
         mapCanvas;
 
-      // INITIAL FIT
-      const camera =
-        cameraRef.current;
+      // INITIAL FIT ONLY ONCE
+      if (!initializedRef.current) {
 
-      const scale =
-        Math.min(
-          canvas.width /
-            mapWidth,
+        const camera =
+          cameraRef.current;
 
-          canvas.height /
-            mapHeight
-        ) * 0.9;
+        const scale =
+          Math.min(
+            canvas.width / mapWidth,
+            canvas.height / mapHeight
+          ) * 0.9;
 
-      camera.scale = scale;
+        camera.scale = scale;
 
-      camera.offsetX =
-        (
-          canvas.width -
-          mapWidth * scale
-        ) / 2;
+        camera.offsetX =
+          (
+            canvas.width -
+            mapWidth * scale
+          ) / 2;
 
-      camera.offsetY =
-        (
-          canvas.height -
-          mapHeight * scale
-        ) / 2;
+        camera.offsetY =
+          (
+            canvas.height -
+            mapHeight * scale
+          ) / 2;
+
+        initializedRef.current = true;
+      }
 
       drawScene();
     };
 
-    // ======================
-    // CREATE ROBOT
-    // ======================
-    const createRobotSubscription = (
+    // ======================================
+    // CREATE ROBOT SUBSCRIPTION
+    // ======================================
 
+    const createRobotSubscription = (
       robotName,
       odomTopic
-
     ) => {
 
-      // EXISTS
+      // ALREADY EXISTS
       if (
         robotSubscribersRef.current[
           robotName
@@ -492,32 +486,39 @@ export default function FleetMapCanvas({
       }
 
       // CREATE ROBOT
-      setRobots((prev) => ({
+      setRobots((prev) => {
 
-        ...prev,
+        const updated = {
 
-        [robotName]: {
+          ...prev,
 
-          x: 0,
-          y: 0,
-          theta: 0,
+          [robotName]: {
 
-          battery:
-            Math.floor(
-              Math.random() *
-                100
-            ),
+            x: 0,
+            y: 0,
+            theta: 0,
 
-          model: "AMR",
+            battery:
+              Math.floor(
+                Math.random() * 100
+              ),
 
-          active: false,
+            model: "AMR",
 
-          lastSeen:
-            Date.now(),
-        },
-      }));
+            active: false,
 
-      // SUBSCRIBE
+            lastSeen:
+              Date.now(),
+          },
+        };
+
+        robotsRef.current =
+          updated;
+
+        return updated;
+      });
+
+      // ROS TOPIC
       const topic =
         new ROSLIB.Topic({
 
@@ -537,14 +538,14 @@ export default function FleetMapCanvas({
         const orientation =
           msg.pose.pose.orientation;
 
-        // QUATERNION → YAW
+        // QUATERNION -> YAW
         const siny =
           2 *
           (
             orientation.w *
-              orientation.z +
+            orientation.z +
             orientation.x *
-              orientation.y
+            orientation.y
           );
 
         const cosy =
@@ -552,9 +553,9 @@ export default function FleetMapCanvas({
           2 *
           (
             orientation.y *
-              orientation.y +
+            orientation.y +
             orientation.z *
-              orientation.z
+            orientation.z
           );
 
         const yaw =
@@ -563,40 +564,48 @@ export default function FleetMapCanvas({
             cosy
           );
 
-        // UPDATE STATE
+        // ACTIVE CHECK
         const linearX =
-     msg.twist.twist.linear.x;
+          msg.twist.twist.linear.x;
 
-    const angularZ =
-    msg.twist.twist.angular.z;
+        const angularZ =
+          msg.twist.twist.angular.z;
 
-    const isActive =
+        const isActive =
+          Math.abs(linearX) > 0.01 ||
+          Math.abs(angularZ) > 0.01;
 
-    Math.abs(linearX) > 0.01 ||
+        setRobots((prev) => {
 
-    Math.abs(angularZ) > 0.01;
-        setRobots((prev) => ({
+          const updated = {
 
-          ...prev,
+            ...prev,
 
-          [robotName]: {
+            [robotName]: {
 
-            ...prev[robotName],
+              ...prev[robotName],
 
-            x: position.x,
+              x: position.x,
+              y: position.y,
 
-            y: position.y,
+              theta: yaw,
 
-            theta: yaw,
+              active: isActive,
 
-            active: isActive,
+              lastSeen:
+                Date.now(),
+            },
+          };
 
-            lastSeen:
-              Date.now(),
-          },
-        }));
+          robotsRef.current =
+            updated;
 
-        drawScene();
+          return updated;
+        });
+
+        requestAnimationFrame(
+          drawScene
+        );
       });
 
       robotSubscribersRef.current[
@@ -604,9 +613,10 @@ export default function FleetMapCanvas({
       ] = topic;
     };
 
-    // ======================
+    // ======================================
     // DISCOVER ROBOTS
-    // ======================
+    // ======================================
+
     const discoverRobots = () => {
 
       ros.getTopics((topics) => {
@@ -619,28 +629,34 @@ export default function FleetMapCanvas({
               )
           );
 
+        console.log(
+          odomTopics
+        );
+
         odomTopics.forEach(
           (topicName) => {
 
+            const parts =
+              topicName.split("/");
+
             const robotName =
-              topicName.split(
-                "/"
-              )[1];
+              parts[0] === ""
+                ? parts[1]
+                : parts[0];
 
             createRobotSubscription(
-
               robotName,
               topicName
-
             );
           }
         );
       });
     };
 
-    // ======================
+    // ======================================
     // OFFLINE CHECK
-    // ======================
+    // ======================================
+
     const offlineTimer =
       setInterval(() => {
 
@@ -666,14 +682,20 @@ export default function FleetMapCanvas({
             }
           );
 
+          robotsRef.current =
+            updated;
+
           return updated;
         });
 
+        drawScene();
+
       }, 1000);
 
-    // ======================
+    // ======================================
     // MAP TOPIC
-    // ======================
+    // ======================================
+
     const mapTopic =
       new ROSLIB.Topic({
 
@@ -689,7 +711,10 @@ export default function FleetMapCanvas({
       renderMap
     );
 
-    // INITIAL DISCOVERY
+    // ======================================
+    // INITIAL ROBOT DISCOVERY
+    // ======================================
+
     discoverRobots();
 
     // REDISCOVER
@@ -699,9 +724,10 @@ export default function FleetMapCanvas({
         5000
       );
 
-    // ======================
+    // ======================================
     // ZOOM
-    // ======================
+    // ======================================
+
     const handleWheel = (
       e
     ) => {
@@ -758,9 +784,10 @@ export default function FleetMapCanvas({
       drawScene();
     };
 
-    // ======================
+    // ======================================
     // PAN START
-    // ======================
+    // ======================================
+
     const handleMouseDown = (
       e
     ) => {
@@ -768,8 +795,7 @@ export default function FleetMapCanvas({
       const camera =
         cameraRef.current;
 
-      camera.isDragging =
-        true;
+      camera.isDragging = true;
 
       camera.lastX =
         e.clientX;
@@ -781,9 +807,10 @@ export default function FleetMapCanvas({
         "grabbing";
     };
 
-    // ======================
+    // ======================================
     // PAN MOVE
-    // ======================
+    // ======================================
+
     const handleMouseMove = (
       e
     ) => {
@@ -806,7 +833,6 @@ export default function FleetMapCanvas({
         camera.lastY;
 
       camera.offsetX += dx;
-
       camera.offsetY += dy;
 
       camera.lastX =
@@ -818,9 +844,10 @@ export default function FleetMapCanvas({
       drawScene();
     };
 
-    // ======================
+    // ======================================
     // PAN END
-    // ======================
+    // ======================================
+
     const handleMouseUp = () => {
 
       cameraRef.current.isDragging =
@@ -830,7 +857,10 @@ export default function FleetMapCanvas({
         "grab";
     };
 
+    // ======================================
     // EVENTS
+    // ======================================
+
     canvas.addEventListener(
       "wheel",
       handleWheel
@@ -861,12 +891,12 @@ export default function FleetMapCanvas({
 
     resizeCanvas();
 
-    // ======================
-    // REDRAW ON STATE CHANGE
-    // ======================
     drawScene();
 
+    // ======================================
     // CLEANUP
+    // ======================================
+
     return () => {
 
       clearInterval(
@@ -912,7 +942,7 @@ export default function FleetMapCanvas({
       );
     };
 
-  }, [ros, robots]);
+  }, [ros]);
 
   return (
     <canvas
