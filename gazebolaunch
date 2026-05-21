@@ -1,0 +1,159 @@
+from launch import LaunchDescription
+from launch_ros.actions import Node
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import Command, PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def generate_launch_description():
+
+    pkg = FindPackageShare('map_a_custom_world')
+
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+                FindPackageShare('gazebo_ros'),
+                'launch',
+                'gazebo.launch.py'
+            ])
+        ])
+    )
+
+    # =========================
+    # ROBOT 1
+    # =========================
+
+    robot1_description = ParameterValue(
+        Command([
+            'xacro ',
+            PathJoinSubstitution([
+                pkg,
+                'urdf',
+                'amr.xacro'
+            ]),
+            ' prefix:=robot1'
+        ]),
+        value_type=str
+    )
+
+    rsp1 = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        namespace='robot1',
+        parameters=[{
+            'robot_description': robot1_description,
+            'use_sim_time': True
+        }],
+        output='screen'
+    )
+
+    spawn1 = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-entity', 'robot1',
+            '-topic', '/robot1/robot_description',
+            '-x', '0.0',
+            '-y', '0.0',
+            '-z', '0.1'
+        ],
+        output='screen'
+    )
+
+    # =========================
+    # ROBOT 2
+    # =========================
+
+    robot2_description = ParameterValue(
+        Command([
+            'xacro ',
+            PathJoinSubstitution([
+                pkg,
+                'urdf',
+                'amr.xacro'
+            ]),
+            ' prefix:=robot2'
+        ]),
+        value_type=str
+    )
+
+    rsp2 = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        namespace='robot2',
+        parameters=[{
+            'robot_description': robot2_description,
+            'use_sim_time': True
+        }],
+        output='screen'
+    )
+
+    spawn2 = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-entity', 'robot2',
+            '-topic', '/robot2/robot_description',
+            '-x', '1.0',
+            '-y', '0.0',
+            '-z', '0.1'
+        ],
+        output='screen'
+    )
+
+    # =========================
+    # ROBOT 3
+    # =========================
+
+    robot3_description = ParameterValue(
+        Command([
+            'xacro ',
+            PathJoinSubstitution([
+                pkg,
+                'urdf',
+                'amr.xacro'
+            ]),
+            ' prefix:=robot3'
+        ]),
+        value_type=str
+    )
+
+    rsp3 = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        namespace='robot3',
+        parameters=[{
+            'robot_description': robot3_description,
+            'use_sim_time': True
+        }],
+        output='screen'
+    )
+
+    spawn3 = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-entity', 'robot3',
+            '-topic', '/robot3/robot_description',
+            '-x', '2.0',
+            '-y', '0.0',
+            '-z', '0.1'
+        ],
+        output='screen'
+    )
+
+    return LaunchDescription([
+
+        gazebo,
+
+        rsp1,
+        rsp2,
+        rsp3,
+
+        spawn1,
+        spawn2,
+        spawn3,
+
+    ])
